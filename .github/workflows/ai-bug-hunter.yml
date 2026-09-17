@@ -37,6 +37,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_USER: ${{ github.repository_owner }}
+          # Must match the timezone your GitHub profile graph is viewed in, or totals drift from the profile.
+          TIMEZONE: Asia/Jerusalem
           OUT_DIR: ../dist
         run: npm run generate
 

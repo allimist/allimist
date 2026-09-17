@@ -4,6 +4,9 @@ import path from 'node:path';
 const username = process.env.GITHUB_USER || process.argv[2];
 const token = process.env.GITHUB_TOKEN;
 const outDir = process.env.OUT_DIR || path.resolve('dist');
+// GitHub's profile page buckets days in the visitor's timezone. Without this header the API
+// (and therefore a bot token in Actions) uses UTC, which shifts day boundaries and totals.
+const timeZone = process.env.TIMEZONE || 'UTC';
 
 if (!username) {
   console.error('Missing GitHub username. Set GITHUB_USER or pass it as the first argument.');
@@ -39,6 +42,7 @@ async function fetchCalendar() {
     headers: {
       authorization: `Bearer ${token}`,
       'content-type': 'application/json',
+      'time-zone': timeZone,
       'user-agent': 'github-ai-bug-hunter'
     },
     body: JSON.stringify({ query, variables: { login: username } })
@@ -124,7 +128,9 @@ function robotShape(T) {
 </g>`;
 }
 
-const generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+const generatedAt = new Intl.DateTimeFormat('en-CA', {
+  timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZoneName: 'short'
+}).format(new Date()).replace(',', '');
 
 function buildSvg(calendar, mode) {
   const T = THEMES[mode];
@@ -288,7 +294,7 @@ function buildSvg(calendar, mode) {
 <rect x="0" y="0" width="${width}" height="${height}" rx="12" fill="url(#bgG)" stroke="${T.border}"/>
 ${particles}
 <text x="${padX}" y="24" class="title">AI Bug Hunter</text>
-<text x="${padX}" y="40" class="sub">${esc(username)} · ${calendar.totalContributions} contributions · ${targets.length} bugs to fix</text>
+<text x="${padX}" y="40" class="sub">${esc(username)} · ${calendar.totalContributions} contributions in the last year · ${targets.length} bugs to fix</text>
 ${progress}
 <g>${cells}</g>
 <g>${infected}</g>
