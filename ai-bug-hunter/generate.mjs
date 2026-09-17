@@ -9,7 +9,6 @@ if (!username) {
   console.error('Missing GitHub username. Set GITHUB_USER or pass it as the first argument.');
   process.exit(1);
 }
-
 if (!token) {
   console.error('Missing GITHUB_TOKEN.');
   process.exit(1);
@@ -44,154 +43,266 @@ async function fetchCalendar() {
     },
     body: JSON.stringify({ query, variables: { login: username } })
   });
-
-  if (!res.ok) {
-    throw new Error(`GitHub GraphQL failed: ${res.status} ${await res.text()}`);
-  }
-
+  if (!res.ok) throw new Error(`GitHub GraphQL failed: ${res.status} ${await res.text()}`);
   const json = await res.json();
-  if (json.errors?.length) {
-    throw new Error(json.errors.map(e => e.message).join('; '));
-  }
-
+  if (json.errors?.length) throw new Error(json.errors.map(e => e.message).join('; '));
   const calendar = json.data?.user?.contributionsCollection?.contributionCalendar;
   if (!calendar) throw new Error(`Could not load contribution calendar for ${username}`);
   return calendar;
 }
 
-function esc(s) {
-  return String(s).replace(/[&<>\"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const LEVEL = { NONE: 0, FIRST_QUARTILE: 1, SECOND_QUARTILE: 2, THIRD_QUARTILE: 3, FOURTH_QUARTILE: 4 };
+const n2 = v => +v.toFixed(2);
+const k5 = v => Math.max(0, Math.min(1, v)).toFixed(5);
+
+// Deterministic pseudo-random so light/dark and daily builds stay stable.
+function rng(seed) {
+  let s = seed >>> 0;
+  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
-const levelClass = {
-  NONE: 0,
-  FIRST_QUARTILE: 1,
-  SECOND_QUARTILE: 2,
-  THIRD_QUARTILE: 3,
-  FOURTH_QUARTILE: 4
+// Turn [t0, t1, ...] into strictly increasing keyTimes in [0,1].
+function keyTimes(times, duration) {
+  const out = [];
+  let prev = -1;
+  for (const t of times) {
+    let k = t / duration;
+    if (k <= prev) k = prev + 0.00001;
+    k = Math.min(k, 1);
+    out.push(k);
+    prev = k;
+  }
+  out[0] = 0;
+  out[out.length - 1] = 1;
+  return out.map(k => k.toFixed(5)).join(';');
+}
+
+const THEMES = {
+  light: {
+    bg: '#ffffff', bg2: '#f6f8fa', border: '#d0d7de', empty: '#ebedf0', text: '#57606a', title: '#1f2328',
+    green: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
+    red: ['#ebedf0', '#ff9f97', '#ff6b5e', '#e8402f', '#b3261e'],
+    metal1: '#e6edf3', metal2: '#9aa4ae', metal3: '#5c6670', outline: '#3d444d',
+    eye: '#0ea5e9', flash: '#ffffff', track: '#e6e8eb', particle: '#8b949e'
+  },
+  dark: {
+    bg: '#0d1117', bg2: '#161b22', border: '#30363d', empty: '#161b22', text: '#8b949e', title: '#e6edf3',
+    green: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
+    red: ['#161b22', '#7a2020', '#a52a2a', '#d9362b', '#ff5c4d'],
+    metal1: '#c9d1d9', metal2: '#7d8590', metal3: '#484f58', outline: '#22272e',
+    eye: '#38bdf8', flash: '#ffffff', track: '#21262d', particle: '#c9d1d9'
+  }
 };
 
-function robotSvg(cx, cy, scale = 1) {
+function robotShape(T) {
   return `
-  <g transform="translate(${cx} ${cy}) scale(${scale})" class="robot">
-    <rect x="-6" y="-5" width="12" height="9" rx="2" class="robotBody"/>
-    <rect x="-4" y="-8" width="8" height="3" rx="1.5" class="robotHead"/>
-    <circle cx="-2" cy="-6.5" r="0.8" class="robotEye"/>
-    <circle cx="2" cy="-6.5" r="0.8" class="robotEye"/>
-    <path d="M0 -8 L0 -10 M0 -10 L2 -11" class="robotLine"/>
-    <path d="M-7 -2 L-10 0 M7 -2 L10 0 M-3 4 L-5 8 M3 4 L5 8" class="robotLine"/>
-    <path d="M-2 0 Q0 2 2 0" class="robotMouth"/>
-  </g>`;
-}
-
-function bugSvg(x, y, cls, idx, beginSec, duration) {
-  const t1 = Math.max(0, Math.min(0.999, beginSec / duration));
-  const t2 = Math.max(t1, Math.min(0.9995, (beginSec + 0.18) / duration));
-  return `
-  <g class="bugWrap ${cls}" data-i="${idx}">
-    <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;${t1.toFixed(5)};${t2.toFixed(5)};1" dur="${duration}s" repeatCount="indefinite"/>
-    <g transform="translate(${x + 6.5} ${y + 6.5})">
-      <ellipse rx="3.2" ry="3.6" class="bugBody"/>
-      <circle cy="-3.6" r="2.1" class="bugHead"/>
-      <path d="M-4 -1 L-6 -3 M4 -1 L6 -3 M-4 1 L-6 3 M4 1 L6 3 M-1.5 -5.4 L-3 -7 M1.5 -5.4 L3 -7" class="bugLine"/>
-      <circle cx="-0.8" cy="-4" r="0.45" class="bugEye"/><circle cx="0.8" cy="-4" r="0.45" class="bugEye"/>
+<g id="bot" filter="url(#glow)" transform="scale(__SCALE__)">
+  <ellipse cx="0" cy="18" rx="10" ry="3" fill="url(#spot)"/>
+  <g class="bob">
+    <path d="M-7 2 L-11 6 M7 2 L11 6 M-3 8 L-4 11 M3 8 L4 11" class="rLine"/>
+    <rect x="-7" y="-1" width="14" height="9" rx="3" fill="url(#bodyG)" class="rStroke"/>
+    <rect x="-4.5" y="1.5" width="9" height="4" rx="1" fill="${T.metal3}" opacity=".55"/>
+    <circle cx="0" cy="3.5" r="1.4" class="eye"><animate attributeName="opacity" values=".5;1;.5" dur="2.2s" repeatCount="indefinite"/></circle>
+    <rect x="-1.5" y="-4" width="3" height="3.2" fill="${T.metal3}"/>
+    <rect x="-8" y="-13" width="16" height="10" rx="4" fill="url(#headG)" class="rStroke"/>
+    <rect x="-6" y="-11" width="12" height="5.2" rx="2.6" fill="${T.outline}"/>
+    <circle cx="-3" cy="-8.4" r="1.5" class="eye"/>
+    <circle cx="3" cy="-8.4" r="1.5" class="eye"/>
+    <g class="eyeFlash" opacity="0">
+      <circle cx="-3" cy="-8.4" r="2.4" fill="${T.flash}"/>
+      <circle cx="3" cy="-8.4" r="2.4" fill="${T.flash}"/>
+      <animate attributeName="opacity" values="__FLASH_VALUES__" keyTimes="__FLASH_TIMES__" dur="__DUR__s" repeatCount="indefinite"/>
     </g>
-  </g>`;
+    <path d="M0 -13 L0 -17" class="rLine"/>
+    <circle cx="0" cy="-18.4" r="1.6" fill="#ff5c4d"><animate attributeName="opacity" values="1;.2;1" dur=".9s" repeatCount="indefinite"/></circle>
+    <animateTransform attributeName="transform" type="translate" values="0 0;0 -2;0 0" dur="1.7s" repeatCount="indefinite" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1"/>
+  </g>
+  <path d="M0 8 L-2.6 11.5 L1.8 12.4 L0 16.5" class="zap" opacity="0">
+    <animate attributeName="opacity" values="__FLASH_VALUES__" keyTimes="__FLASH_TIMES__" dur="__DUR__s" repeatCount="indefinite"/>
+  </path>
+</g>`;
 }
 
-function buildSvg(calendar, dark = false) {
+function buildSvg(calendar, mode) {
+  const T = THEMES[mode];
   const weeks = calendar.weeks;
   const cols = weeks.length;
   const rows = 7;
-  const cell = 14;
-  const gap = 3;
-  const pitch = cell + gap;
-  const padX = 20;
-  const padY = 22;
-  const width = padX * 2 + cols * pitch - gap;
-  const height = padY * 2 + rows * pitch - gap + 30;
+  const cell = 13, gap = 3, pitch = cell + gap;
+  const padX = 24, headerH = 76, footerH = 42;
+  const gridW = cols * pitch - gap;
+  const gridH = rows * pitch - gap;
+  const width = padX * 2 + gridW;
+  const height = headerH + gridH + footerH;
+  const gx = padX, gy = headerH;
+  const cx = c => gx + c * pitch + cell / 2;
+  const cy = r => gy + r * pitch + cell / 2;
 
-  // Snake-scan every visible cell. The robot advances at a steady speed.
-  const path = [];
-  for (let c = 0; c < cols; c++) {
-    const rowOrder = c % 2 === 0 ? [...Array(rows).keys()] : [...Array(rows).keys()].reverse();
-    for (const r of rowOrder) path.push({ c, r });
+  // ---- Targets: only cells with contributions, swept column by column in a serpentine.
+  const targets = [];
+  let down = true;
+  weeks.forEach((w, c) => {
+    const infected = w.contributionDays
+      .filter(d => d.contributionCount > 0)
+      .sort((a, b) => a.weekday - b.weekday);
+    if (!infected.length) return;
+    if (!down) infected.reverse();
+    for (const d of infected) targets.push({ c, r: d.weekday, level: LEVEL[d.contributionLevel] || 1 });
+    down = !down;
+  });
+
+  // ---- Timeline: the robot flies straight to each bug, pauses to zap it, then continues.
+  const SPEED = 260;     // px per second
+  const DWELL = 0.10;    // seconds spent zapping a cell
+  const MAX_ACTIVE = 38; // seconds; long histories get sped up to fit
+  const MIN_ACTIVE = 14; // seconds; sparse histories get slowed down so the flight is watchable
+  const HOLD = 2.8;      // seconds to show the "all clear" state before looping
+  const ROBOT_SCALE = 1.15;
+  const ROBOT_LIFT = 19;  // robot floats this far above the cell it is fixing (zap tip lands on the cell)
+  const midY = gy + gridH / 2;
+  const startPos = [gx - 50, midY];
+  const exitPos = [width + 50, midY];
+
+  const frames = [{ t: 0, x: startPos[0], y: startPos[1] }];
+  const visits = [];
+  let t = 0, px = startPos[0], py = startPos[1];
+  for (const tg of targets) {
+    const x = cx(tg.c), y = cy(tg.r) - ROBOT_LIFT;
+    t += Math.max(0.03, Math.hypot(x - px, y - py) / SPEED);
+    frames.push({ t, x, y });
+    visits.push(t);
+    t += DWELL;
+    frames.push({ t, x, y });
+    px = x; py = y;
   }
+  const scale = t > MAX_ACTIVE ? MAX_ACTIVE / t : t < MIN_ACTIVE && t > 0 ? MIN_ACTIVE / t : 1;
+  for (const f of frames) f.t *= scale;
+  for (let i = 0; i < visits.length; i++) visits[i] *= scale;
+  t *= scale;
+  const lastVisit = visits.length ? visits[visits.length - 1] : 0;
+  const exitT = t + Math.hypot(exitPos[0] - px, exitPos[1] - py) / SPEED;
+  frames.push({ t: exitT, x: exitPos[0], y: exitPos[1] });
+  const duration = n2(exitT + HOLD);
+  frames.push({ t: duration - 0.05, x: exitPos[0], y: exitPos[1] });
+  frames.push({ t: duration, x: startPos[0], y: startPos[1] }); // teleport home while invisible
 
-  const stepSec = 0.065;
-  const duration = Math.max(10, path.length * stepSec + 2.0);
-  const visitTime = new Map();
-  path.forEach((p, i) => visitTime.set(`${p.c}:${p.r}`, i * stepSec));
+  let minStep = Infinity;
+  for (let i = 1; i < visits.length; i++) minStep = Math.min(minStep, visits[i] - visits[i - 1]);
+  const flashLen = Math.min(0.12, (isFinite(minStep) ? minStep : 1) * 0.55);
+  const fadeLen = Math.min(0.16, (isFinite(minStep) ? minStep : 1) * 0.8);
 
-  const moveValues = path.map(({c, r}) => {
-    const x = padX + c * pitch + cell / 2;
-    const y = padY + r * pitch + cell / 2;
-    return `${x},${y}`;
-  }).join(';');
+  const robotMove = `<animateTransform attributeName="transform" type="translate" calcMode="linear" dur="${duration}s" repeatCount="indefinite" values="${frames.map(f => `${n2(f.x)} ${n2(f.y)}`).join(';')}" keyTimes="${keyTimes(frames.map(f => f.t), duration)}"/>`;
+  const robotFade = `<animate attributeName="opacity" calcMode="linear" dur="${duration}s" repeatCount="indefinite" values="0;1;1;0;0;0" keyTimes="${keyTimes([0, 0.35, t + 0.1, exitT, duration - 0.05, duration], duration)}"/>`;
 
-  let cells = '';
-  let bugs = '';
-  let sparkles = '';
+  // Eye flash + zap bolt fire at every visit.
+  const flashV = ['0'], flashT = [0];
+  for (const v of visits) {
+    flashV.push('0', '1', '0');
+    flashT.push(v - 0.005, v, v + flashLen);
+  }
+  flashV.push('0'); flashT.push(duration);
+  const robot = robotShape(T)
+    .replaceAll('__FLASH_VALUES__', flashV.join(';'))
+    .replaceAll('__FLASH_TIMES__', keyTimes(flashT, duration))
+    .replaceAll('__DUR__', String(duration))
+    .replaceAll('__SCALE__', String(ROBOT_SCALE));
 
-  for (let c = 0; c < cols; c++) {
-    const days = weeks[c].contributionDays;
-    for (const day of days) {
-      const r = day.weekday;
-      const x = padX + c * pitch;
-      const y = padY + r * pitch;
-      const level = levelClass[day.contributionLevel] ?? 0;
-      const visit = visitTime.get(`${c}:${r}`) ?? 0;
-      cells += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="3" class="cell l${level}"/>`;
-      if (day.contributionCount > 0) {
-        bugs += bugSvg(x, y, `l${level}`, `${c}-${r}`, visit, duration);
-        const st1 = Math.max(0, Math.min(0.999, visit / duration));
-        const st2 = Math.max(st1, Math.min(0.9993, (visit + 0.10) / duration));
-        const st3 = Math.max(st2, Math.min(0.9996, (visit + 0.24) / duration));
-        sparkles += `<g class="spark" transform="translate(${x + cell/2} ${y + cell/2})"><animate attributeName="opacity" values="0;0;1;0;0" keyTimes="0;${st1.toFixed(5)};${st2.toFixed(5)};${st3.toFixed(5)};1" dur="${duration}s" repeatCount="indefinite"/><path d="M0 -5 V5 M-5 0 H5 M-3.5 -3.5 L3.5 3.5 M3.5 -3.5 L-3.5 3.5"/></g>`;
+  // ---- Cells
+  let cells = '', infected = '', bursts = '';
+  weeks.forEach((w, c) => {
+    for (const d of w.contributionDays) {
+      const r = d.weekday, x = gx + c * pitch, y = gy + r * pitch;
+      const lv = LEVEL[d.contributionLevel] || 0;
+      if (d.contributionCount === 0) {
+        cells += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="3" fill="${T.empty}"/>`;
+        continue;
       }
+      const L = Math.max(1, lv);
+      const idx = targets.findIndex(tg => tg.c === c && tg.r === r);
+      const v = visits[idx];
+      cells += `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="3" fill="${T.empty}">` +
+        `<animate attributeName="fill" values="${T.empty};${T.empty};${T.green[L]};${T.green[L]}" keyTimes="${keyTimes([0, v, v + fadeLen, duration], duration)}" dur="${duration}s" repeatCount="indefinite"/></rect>`;
+      const delay = -((c * 0.13 + r * 0.21) % 1.4).toFixed(2);
+      infected += `<g><animate attributeName="opacity" values="1;1;0;0" keyTimes="${keyTimes([0, v, v + fadeLen, duration], duration)}" dur="${duration}s" repeatCount="indefinite"/>` +
+        `<rect x="${x}" y="${y}" width="${cell}" height="${cell}" rx="3" fill="${T.red[L]}" class="inf" style="animation-delay:${delay}s"/>` +
+        `<circle cx="${n2(x + cell / 2)}" cy="${n2(y + cell / 2)}" r="1.6" fill="${T.outline}" opacity=".55"/></g>`;
+      bursts += `<circle cx="${n2(x + cell / 2)}" cy="${n2(y + cell / 2)}" r="3" fill="none" stroke="${T.green[4]}" stroke-width="1.6" opacity="0">` +
+        `<animate attributeName="r" values="2;2;13;13" keyTimes="${keyTimes([0, v, v + 0.4, duration], duration)}" dur="${duration}s" repeatCount="indefinite"/>` +
+        `<animate attributeName="opacity" values="0;0;1;0;0" keyTimes="${keyTimes([0, v, v + 0.04, v + 0.4, duration], duration)}" dur="${duration}s" repeatCount="indefinite"/></circle>`;
     }
-  }
+  });
 
-  const theme = dark ? {
-    bg: '#0d1117', border: '#30363d', empty: '#161b22', text: '#8b949e',
-    greens: ['#161b22','#0e4429','#006d32','#26a641','#39d353'], robot: '#ffd33d', robot2: '#f5c400'
-  } : {
-    bg: '#ffffff', border: '#d0d7de', empty: '#ebedf0', text: '#57606a',
-    greens: ['#ebedf0','#9be9a8','#40c463','#30a14e','#216e39'], robot: '#f2cc00', robot2: '#d4a900'
-  };
+  // ---- Header: title, live progress bar, "all clear" badge
+  const barW = 150, barH = 6, barX = width - padX - barW, barY = 26;
+  const progV = ['0'], progT = [0];
+  visits.forEach((v, i) => { progV.push(n2(barW * (i + 1) / visits.length)); progT.push(v); });
+  progV.push(String(barW)); progT.push(duration);
+  const progress = `
+<text x="${barX}" y="18" class="label">BUGS FIXED</text>
+<rect x="${barX}" y="${barY}" width="${barW}" height="${barH}" rx="3" fill="${T.track}"/>
+<rect x="${barX}" y="${barY}" width="0" height="${barH}" rx="3" fill="url(#barG)"><animate attributeName="width" calcMode="linear" values="${progV.join(';')}" keyTimes="${keyTimes(progT, duration)}" dur="${duration}s" repeatCount="indefinite"/></rect>
+<g opacity="0">
+  <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="${keyTimes([0, lastVisit + 0.4, lastVisit + 0.9, duration - 0.06, duration], duration)}" dur="${duration}s" repeatCount="indefinite"/>
+  <rect x="${barX + barW - 78}" y="${barY + barH + 6}" width="78" height="16" rx="8" fill="${T.green[3]}"/>
+  <text x="${barX + barW - 39}" y="${barY + barH + 17.5}" text-anchor="middle" class="badge">✓ ALL CLEAR</text>
+</g>`;
+
+  // ---- Ambient particles
+  const rand = rng(1337);
+  let particles = '';
+  for (let i = 0; i < 18; i++) {
+    const x = n2(rand() * width), y = n2(rand() * height), r = n2(0.6 + rand() * 1.1);
+    const dur = n2(2 + rand() * 3), beg = n2(-rand() * 4);
+    particles += `<circle cx="${x}" cy="${y}" r="${r}" fill="${T.particle}" opacity=".18"><animate attributeName="opacity" values=".05;.35;.05" dur="${dur}s" begin="${beg}s" repeatCount="indefinite"/></circle>`;
+  }
 
   const style = `
-  :root{--bg:${theme.bg};--border:${theme.border};--empty:${theme.empty};--text:${theme.text};--g1:${theme.greens[1]};--g2:${theme.greens[2]};--g3:${theme.greens[3]};--g4:${theme.greens[4]};--robot:${theme.robot};--robot2:${theme.robot2};}
-  .bg{fill:var(--bg)} .cell{stroke:var(--border);stroke-width:.7}.cell.l0{fill:var(--empty)}.cell.l1{fill:var(--g1)}.cell.l2{fill:var(--g2)}.cell.l3{fill:var(--g3)}.cell.l4{fill:var(--g4)}
-  .bugBody,.bugHead{fill:#2da44e}.bugLine{fill:none;stroke:#0f5d2e;stroke-width:1;stroke-linecap:round}.bugEye{fill:#0d1117}
-  .bugWrap.l2 .bugBody,.bugWrap.l2 .bugHead{fill:#26a641}.bugWrap.l3 .bugBody,.bugWrap.l3 .bugHead{fill:#218b45}.bugWrap.l4 .bugBody,.bugWrap.l4 .bugHead{fill:#196c2e}
-  .spark{opacity:0}.spark path{stroke:var(--robot);stroke-width:1.2;stroke-linecap:round;fill:none}
-  .runner{animation:move ${duration}s linear infinite}.robotBody{fill:var(--robot)}.robotHead{fill:var(--robot2)}.robotEye{fill:#111}.robotLine{fill:none;stroke:var(--robot);stroke-width:1.6;stroke-linecap:round}.robotMouth{fill:none;stroke:#111;stroke-width:1;stroke-linecap:round}.robot{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))}
-  @keyframes move{0%{offset-distance:0%}100%{offset-distance:100%}}
-  .caption{fill:var(--text);font:600 12px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.sub{fill:var(--text);font:10px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-  `;
-
-  // Use animateMotion for broad SVG compatibility, with discrete keyPoints-like timing via values.
-  const robot = `<g class="runner">${robotSvg(0, 0, 1.05)}<animateTransform attributeName="transform" type="translate" dur="${duration}s" repeatCount="indefinite" values="${moveValues}" calcMode="linear"/></g>`;
+.title{fill:${T.title};font:700 15px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.2px}
+.sub,.label,.legend{fill:${T.text};font:600 10px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+.label{letter-spacing:1.2px;font-size:9px}
+.badge{fill:#fff;font:700 9px -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;letter-spacing:.6px}
+.rStroke{stroke:${T.outline};stroke-width:.9}
+.rLine{fill:none;stroke:${T.metal2};stroke-width:1.8;stroke-linecap:round}
+.eye{fill:${T.eye}}
+.zap{fill:none;stroke:${T.eye};stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.inf{animation:inf 1.4s ease-in-out infinite}
+@keyframes inf{0%,100%{opacity:1}50%{opacity:.55}}
+`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="title desc">
 <title id="title">${esc(username)} AI Bug Hunter contribution animation</title>
-<desc id="desc">A yellow AI robot moves through the GitHub contribution grid and removes green software bugs.</desc>
+<desc id="desc">A gray AI robot flies across the GitHub contribution grid. Days with contributions start red as bugs and turn green once the robot fixes them.</desc>
+<defs>
+  <linearGradient id="bgG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${T.bg}"/><stop offset="1" stop-color="${T.bg2}"/></linearGradient>
+  <linearGradient id="bodyG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.metal1}"/><stop offset="1" stop-color="${T.metal2}"/></linearGradient>
+  <linearGradient id="headG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.metal1}"/><stop offset="1" stop-color="${T.metal2}"/></linearGradient>
+  <linearGradient id="barG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${T.green[2]}"/><stop offset="1" stop-color="${T.green[4]}"/></linearGradient>
+  <radialGradient id="spot"><stop offset="0" stop-color="${T.eye}" stop-opacity=".45"/><stop offset="1" stop-color="${T.eye}" stop-opacity="0"/></radialGradient>
+  <filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="1.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+</defs>
 <style>${style}</style>
-<rect class="bg" x="0" y="0" width="${width}" height="${height}" rx="10"/>
-<text x="${padX}" y="14" class="caption">AI Bug Hunter</text>
-<text x="${width - padX}" y="14" text-anchor="end" class="sub">${calendar.totalContributions} contributions</text>
-${cells}
-${bugs}
-${sparkles}
-${robot}
-<text x="${padX}" y="${height - 10}" class="sub">🤖 fixing bugs across ${esc(username)}'s contribution history</text>
+<rect x="0" y="0" width="${width}" height="${height}" rx="12" fill="url(#bgG)" stroke="${T.border}"/>
+${particles}
+<text x="${padX}" y="24" class="title">AI Bug Hunter</text>
+<text x="${padX}" y="40" class="sub">${esc(username)} · ${calendar.totalContributions} contributions · ${targets.length} bugs to fix</text>
+${progress}
+<g>${cells}</g>
+<g>${infected}</g>
+<g>${bursts}</g>
+<g>${robotFade}${robotMove}${robot}</g>
+<g class="legend">
+  <rect x="${padX}" y="${height - 21}" width="10" height="10" rx="2" fill="${T.red[3]}"/><text x="${padX + 15}" y="${height - 12.5}" class="legend">bug</text>
+  <rect x="${padX + 48}" y="${height - 21}" width="10" height="10" rx="2" fill="${T.green[3]}"/><text x="${padX + 63}" y="${height - 12.5}" class="legend">fixed</text>
+  <text x="${width - padX}" y="${height - 12.5}" text-anchor="end" class="legend">updated daily · github.com/${esc(username)}</text>
+</g>
+<rect x="0" y="0" width="${width}" height="${height}" rx="12" fill="${T.bg}" opacity="0"><animate attributeName="opacity" values=".95;0;0;.95" keyTimes="0;0.025;0.985;1" dur="${duration}s" repeatCount="indefinite"/></rect>
 </svg>`;
 }
 
 const calendar = await fetchCalendar();
 await fs.mkdir(outDir, { recursive: true });
-await fs.writeFile(path.join(outDir, 'github-ai-bug-hunter.svg'), buildSvg(calendar, false));
-await fs.writeFile(path.join(outDir, 'github-ai-bug-hunter-dark.svg'), buildSvg(calendar, true));
+await fs.writeFile(path.join(outDir, 'github-ai-bug-hunter.svg'), buildSvg(calendar, 'light'));
+await fs.writeFile(path.join(outDir, 'github-ai-bug-hunter-dark.svg'), buildSvg(calendar, 'dark'));
 console.log(`Generated AI Bug Hunter SVGs for ${username} in ${outDir}`);

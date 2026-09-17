@@ -18,5 +18,5 @@
 </p>
 
 <p align="center">
-  <sub>A yellow AI robot patrols my real contribution graph and squashes the green bugs. Regenerated daily by <a href=".github/workflows/ai-bug-hunter.yml">GitHub Actions</a>. Source in <a href="ai-bug-hunter/">ai-bug-hunter/</a>.</sub>
+  <sub>A gray AI robot flies through my real contribution graph, zapping red bugs until every day turns green. Regenerated daily by <a href=".github/workflows/ai-bug-hunter.yml">GitHub Actions</a>. Source in <a href="ai-bug-hunter/">ai-bug-hunter/</a>.</sub>
 </p>

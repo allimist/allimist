@@ -1,6 +1,6 @@
 # GitHub AI Bug Hunter 🤖🐛
 
-A GitHub profile animation where a yellow AI robot moves through your real GitHub contribution grid and "fixes" green bugs.
+A GitHub profile animation built from your real contribution grid. Every day you contributed starts as a pulsing red bug. A gray AI robot flies straight from bug to bug, zaps each one, and the cell turns green. A progress bar tracks the hunt and an "All clear" badge appears when the grid is fixed.
 
 This package is preconfigured to work in a GitHub profile repository such as `allimist/allimist`.
 
