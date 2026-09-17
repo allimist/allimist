@@ -1,0 +1,46 @@
+name: AI Bug Hunter
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 0 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - "ai-bug-hunter/**"
+      - ".github/workflows/ai-bug-hunter.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate AI Bug Hunter SVGs
+        working-directory: ai-bug-hunter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_USER: ${{ github.repository_owner }}
+          OUT_DIR: ../dist
+        run: npm run generate
+
+      - name: Publish to output branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: output
+          force_orphan: true
+          commit_message: "Update AI Bug Hunter animation"
