@@ -59,7 +59,7 @@
 <sub>
 🤖 AI robot + 🐛 bugs + 🟩 real GitHub contribution data
 <br>
-Regenerated automatically by GitHub Actions.
+Rebuilt every hour from my live contribution graph by <a href=".github/workflows/ai-bug-hunter.yml">GitHub Actions</a> · source in <a href="ai-bug-hunter/">ai-bug-hunter/</a>
 </sub>
 
 </div>
