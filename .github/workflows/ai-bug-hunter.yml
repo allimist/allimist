@@ -2,8 +2,12 @@ name: AI Bug Hunter
 
 on:
   workflow_dispatch:
+  # Other repos can ping this with `gh api repos/allimist/allimist/dispatches -f event_type=refresh`
+  repository_dispatch:
+    types: [refresh]
   schedule:
-    - cron: "15 0 * * *"
+    # Hourly, so new contributions show up within about an hour instead of the next day.
+    - cron: "7 * * * *"
   push:
     branches:
       - main
@@ -37,6 +41,7 @@ jobs:
         run: npm run generate
 
       - name: Publish to output branch
+        # force_orphan keeps the output branch at a single commit, so hourly runs never bloat history.
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

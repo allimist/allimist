@@ -56,7 +56,7 @@ const LEVEL = { NONE: 0, FIRST_QUARTILE: 1, SECOND_QUARTILE: 2, THIRD_QUARTILE: 
 const n2 = v => +v.toFixed(2);
 const k5 = v => Math.max(0, Math.min(1, v)).toFixed(5);
 
-// Deterministic pseudo-random so light/dark and daily builds stay stable.
+// Deterministic pseudo-random so light/dark and repeated builds stay stable.
 function rng(seed) {
   let s = seed >>> 0;
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -123,6 +123,8 @@ function robotShape(T) {
   </path>
 </g>`;
 }
+
+const generatedAt = new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
 
 function buildSvg(calendar, mode) {
   const T = THEMES[mode];
@@ -295,7 +297,7 @@ ${progress}
 <g class="legend">
   <rect x="${padX}" y="${height - 21}" width="10" height="10" rx="2" fill="${T.red[3]}"/><text x="${padX + 15}" y="${height - 12.5}" class="legend">bug</text>
   <rect x="${padX + 48}" y="${height - 21}" width="10" height="10" rx="2" fill="${T.green[3]}"/><text x="${padX + 63}" y="${height - 12.5}" class="legend">fixed</text>
-  <text x="${width - padX}" y="${height - 12.5}" text-anchor="end" class="legend">updated daily · github.com/${esc(username)}</text>
+  <text x="${width - padX}" y="${height - 12.5}" text-anchor="end" class="legend">updated ${generatedAt} · github.com/${esc(username)}</text>
 </g>
 <rect x="0" y="0" width="${width}" height="${height}" rx="12" fill="${T.bg}" opacity="0"><animate attributeName="opacity" values=".95;0;0;.95" keyTimes="0;0.025;0.985;1" dur="${duration}s" repeatCount="indefinite"/></rect>
 </svg>`;
