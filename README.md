@@ -86,7 +86,8 @@ const allimist = {
   primaryStack: {
     backend: ["Node.js", "TypeScript", "JavaScript", "PHP", "Laravel"],
     frontend: ["React", "Next.js"],
-    data: ["MySQL", "Firebase"],
+    data: ["MySQL", "PostgreSQL", "Redis", "Firebase"],
+    messaging: ["Kafka"],
     cloud: ["AWS", "Linux", "Docker"],
     automation: ["Puppeteer", "Chrome Extensions", "Browser Automation"],
     ai: ["ChatGPT", "Claude Code", "GitHub Copilot", "Cursor"]
@@ -106,6 +107,7 @@ My work goes beyond traditional web development. I have built and maintained sys
 - browser automation
 - cloud infrastructure
 - distributed operational tooling
+- concurrency-safe booking and inventory systems
 - data processing
 - internal dashboards
 - PWA applications
@@ -133,6 +135,9 @@ PHP
 Laravel
 REST APIs
 MySQL
+PostgreSQL
+Redis
+Kafka
 ```
 
 </td>
@@ -241,7 +246,7 @@ AI Workflows
 
 ### Backend
 
-<img src="https://skillicons.dev/icons?i=nodejs,ts,js,php,laravel,mysql" />
+<img src="https://skillicons.dev/icons?i=nodejs,ts,js,php,laravel,mysql,postgres,redis,kafka" />
 
 ### Frontend & Apps
 
@@ -491,6 +496,30 @@ I use AI for:
 <tr>
 <td width="50%" valign="top">
 
+## 🏨 Hotel Booking Lab
+
+### Booking Platform Core Under Concurrency
+
+A Booking.com-style backend with the hard parts left in: atomic room inventory, payment timeouts, event-driven outbox and a load simulator that ranks bottlenecks.
+
+**Engineering areas**
+
+`TypeScript` `Fastify` `React`
+
+`PostgreSQL` `Redis Lua Locks` `Kafka Outbox`
+
+`Concurrency` `Load Testing` `Docker Compose`
+
+<br>
+
+<a href="https://github.com/allimist/hotel-booking-lab">
+<img src="https://img.shields.io/badge/VIEW_PROJECT-181717?style=for-the-badge&logo=github" />
+</a>
+
+</td>
+
+<td width="50%" valign="top">
+
 ## 🔎 TrackLens
 
 ### Tracking Parameter Inspector
@@ -510,7 +539,9 @@ Browser tooling designed around advertising and tracking URLs.
 </a>
 
 </td>
+</tr>
 
+<tr>
 <td width="50%" valign="top">
 
 ## 📡 Distributed Website Monitor
@@ -530,9 +561,7 @@ Distributed website monitoring and operational checking.
 </a>
 
 </td>
-</tr>
 
-<tr>
 <td width="50%" valign="top">
 
 ## 🍪 Proxy Cookie Extension
@@ -552,7 +581,9 @@ Browser tooling for proxy and cookie workflows.
 </a>
 
 </td>
+</tr>
 
+<tr>
 <td width="50%" valign="top">
 
 ## 📊 Ads Tracker
@@ -572,9 +603,7 @@ Advertising tracking and reporting tooling.
 </a>
 
 </td>
-</tr>
 
-<tr>
 <td width="50%" valign="top">
 
 ## 🧠 Adlex
@@ -590,26 +619,6 @@ Application engineering and automation project.
 <br>
 
 <a href="https://github.com/allimist/adlex">
-<img src="https://img.shields.io/badge/VIEW_PROJECT-181717?style=for-the-badge&logo=github" />
-</a>
-
-</td>
-
-<td width="50%" valign="top">
-
-## 🇹🇭 English + Thai Learning
-
-Interactive educational applications combining language learning and game mechanics.
-
-**Engineering areas**
-
-`Interactive UI` `Games`
-
-`English` `Thai`
-
-<br>
-
-<a href="https://github.com/allimist/learn-letters-words-english-thai">
 <img src="https://img.shields.io/badge/VIEW_PROJECT-181717?style=for-the-badge&logo=github" />
 </a>
 
